@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG to WebP Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        'primary-dark': '#2563eb',
+                        secondary: '#8b5cf6',
+                        'secondary-dark': '#7c3aed',
+                        success: '#10b981',
+                        'success-dark': '#059669',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .gradient-bg {
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+</head>
+<body class="gradient-bg min-h-screen font-sans text-white">
+    <div class="p-6 md:p-10" x-data="converter()" x-init="initConverter()">
+        <div class="max-w-5xl mx-auto space-y-8">
+            <h1 class="text-4xl font-bold text-center mb-8">SVG to WebP Converter</h1>
+            
+            <!-- File Upload Area -->
+            <div class="glass-effect rounded-3xl p-8 transition-all duration-300 ease-in-out shadow-lg">
+                <div class="flex items-center space-x-4 mb-6">
+                    <div class="w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-md">
+                        <i class="fas fa-upload text-2xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-semibold">Upload SVG Files</h2>
+                        <p class="text-gray-300">Drag and drop or click to select files</p>
+                    </div>
+                </div>
+                <div 
+                    class="border-2 border-dashed border-white/30 rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 ease-in-out hover:border-primary"
+                    :class="{ 'border-primary': dragover }"
+                    @dragover.prevent="dragover = true"
+                    @dragleave.prevent="dragover = false"
+                    @drop.prevent="handleDrop($event)"
+                    @click="$refs.fileInput.click()"
+                >
+                    <input type="file" x-ref="fileInput" @change="handleFiles($event)" accept=".svg" multiple class="hidden">
+                    <template x-if="!files.length">
+                        <div>
+                            <i class="fas fa-cloud-upload-alt text-5xl text-white/50 mb-4"></i>
+                            <p class="text-lg">Drop your SVG files here, or click to select</p>
+                        </div>
+                    </template>
+                    <template x-if="files.length">
+                        <p class="text-xl font-semibold" x-text="`${files.length} file(s) selected`"></p>
+                    </template>
+                </div>
+                
+                <div class="mt-6 flex items-center justify-between">
+                    <button 
+                        @click="convertAllToWebP" 
+                        :disabled="!files.length || converting" 
+                        class="bg-primary text-white rounded-full py-3 px-8 font-semibold transition-all duration-300 ease-in-out hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                    >
+                        <span x-show="!converting">Convert to WebP</span>
+                        <span x-show="converting" class="flex items-center">
+                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Converting...
+                        </span>
+                    </button>
+                    <div class="flex items-center space-x-4">
+                        <button 
+                            @click="clearAllImages" 
+                            class="text-white/70 hover:text-white transition-colors duration-300 focus:outline-none"
+                        >
+                            <i class="fas fa-trash-alt mr-2"></i>Clear All
+                        </button>
+                        <button 
+                            @click="$refs.additionalFileInput.click()" 
+                            class="text-white/70 hover:text-white transition-colors duration-300 focus:outline-none"
+                        >
+                            <i class="fas fa-plus mr-2"></i>Add Files
+                        </button>
+                    </div>
+                </div>
+                <input type="file" x-ref="additionalFileInput" @change="handleAdditionalFiles($event)" accept=".svg" multiple class="hidden">
+            </div>
+
+            <!-- Converted Files Section -->
+            <div x-show="convertedFiles.length" class="glass-effect rounded-3xl p-8 shadow-lg">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-semibold">Converted Files</h2>
+                    <div class="flex space-x-4">
+                        <button 
+                            @click="downloadSelected" 
+                            class="bg-secondary text-white px-6 py-2 rounded-full hover:bg-secondary-dark transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-opacity-50 shadow-md"
+                        >
+                            Download Selected
+                        </button>
+                        <button 
+                            @click="downloadAll" 
+                            class="bg-primary text-white px-6 py-2 rounded-full hover:bg-primary-dark transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 shadow-md"
+                        >
+                            Download All
+                        </button>
+                    </div>
+                </div>
+                <div class="space-y-4 max-h-96 overflow-y-auto custom-scrollbar pr-4">
+                    <template x-for="(file, index) in convertedFiles" :key="index">
+                        <div class="bg-white/10 rounded-xl p-4 transition-all duration-300 hover:bg-white/20 shadow-md">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center space-x-4">
+                                    <input 
+                                        type="checkbox" 
+                                        x-model="file.selected"
+                                        class="form-checkbox h-5 w-5 text-primary rounded focus:ring-primary"
+                                    >
+                                    <img 
+                                        :src="file.webpUrl" 
+                                        class="h-12 w-12 object-cover rounded-lg cursor-pointer transition-transform duration-300 hover:scale-110 shadow-md"
+                                        @click="openModal(file.svgUrl, file.webpUrl, file.name, file.originalSize, file.convertedSize, index)"
+                                    >
+                                    <div>
+                                        <input 
+                                            type="text" 
+                                            x-model="file.name" 
+                                            class="bg-transparent border-b border-white/30 focus:border-primary focus:ring-0 px-0 text-lg font-medium"
+                                        >
+                                        <p class="text-sm text-white/70">
+                                            <span x-text="formatFileSize(file.originalSize) + ' → ' + formatFileSize(file.convertedSize)"></span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-4">
+                                    <button @click="refreshImage(index)" class="text-white/70 hover:text-white transition-colors duration-300">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                    <a 
+                                        :href="file.webpUrl" 
+                                        :download="file.name.replace('.svg', '.webp')"
+                                        class="text-white/70 hover:text-white transition-colors duration-300"
+                                    >
+                                        <i class="fas fa-download"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal -->
+        <div x-show="showModal" class="fixed inset-0 z-50 overflow-y-auto" @click.self="closeModal">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"></div>
+                <div class="relative glass-effect rounded-3xl max-w-5xl w-full mx-auto shadow-2xl">
+                    <div class="p-8">
+                        <div class="grid grid-cols-2 gap-8 mb-8">
+                            <div>
+                                <h3 class="text-xl font-semibold mb-4">Original SVG</h3>
+                                <img :src="modalSvgUrl" class="w-full h-auto rounded-lg border border-white/20 shadow-md">
+                                <p class="mt-2 text-white/70">Size: <span x-text="formatFileSize(modalOriginalSize)"></span></p>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold mb-4">Converted WebP</h3>
+                                <img :src="modalWebpUrl" class="w-full h-auto rounded-lg border border-white/20 shadow-md">
+                                <p class="mt-2 text-white/70">Size: <span x-text="formatFileSize(modalConvertedSize)"></span></p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-8 mb-8">
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Resolution Multiplier:</label>
+                                <input type="range" x-model="modalResolutionMultiplier" min="1" max="5" step="0.1" class="w-full">
+                                <input type="number" x-model="modalResolutionMultiplier" min="1" step="0.1" class="mt-2 w-full bg-white/10 rounded-md border-white/30 text-white p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Quality:</label>
+                                <input type="range" x-model="modalQuality" min="1" max="100" step="1" class="w-full">
+                                <input type="number" x-model="modalQuality" min="1" max="100" step="1" class="mt-2 w-full bg-white/10 rounded-md border-white/30 text-white p-2">
+                            </div>
+                        </div>
+                        <div class="flex justify-between">
+                            <div class="space-x-4">
+                                <button @click="refreshModalImage" class="bg-secondary text-white px-6 py-2 rounded-full hover:bg-secondary-dark transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-opacity-50 shadow-md">
+                                    Convert
+                                </button>
+                                <button @click="saveModalImage" class="bg-success text-white px-6 py-2 rounded-full hover:bg-success-dark transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-success focus:ring-opacity-50 shadow-md">
+                                    Save Changes
+                                </button>
+                            </div>
+                            <div class="space-x-4">
+                                <a :href="modalWebpUrl" :download="modalFileName" class="bg-primary text-white px-6 py-2 rounded-full hover:bg-primary-dark transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 shadow-md">
+                                    Download
+                                </a>
+                                <button 
+                                    @click="closeModal"
+                                    class="bg-white/20 text-white px-6 py-2 rounded-full hover:bg-white/30 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 shadow-md"
+                                >Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function converter() {
+            return {
+                files: [],
+                convertedFiles: [],
+                resolutionMultiplier: 1,
+                quality: 100,
+                converting: false,
+                dragover: false,
+                showModal: false,
+                modalSvgUrl: '',
+                modalWebpUrl: '',
+                selectAll: true,
+                modalResolutionMultiplier: 1,
+                modalQuality: 100,
+                modalFileName: '',
+                modalOriginalSize: 0,
+                modalConvertedSize: 0,
+                modalIndex: -1,
+
+                initConverter() {
+                    this.resolutionMultiplier = 1;
+                },
+
+                handleFiles(event) {
+                    const newFiles = Array.from(event.target.files).filter(file => file.type === 'image/svg+xml');
+                    this.files = [...this.files, ...newFiles];
+                },
+
+                handleDrop(event) {
+                    this.dragover = false;
+                    const newFiles = Array.from(event.dataTransfer.files).filter(file => file.type === 'image/svg+xml');
+                    this.files = [...this.files, ...newFiles];
+                },
+
+                async convertAllToWebP() {
+                    this.converting = true;
+                    this.convertedFiles = [];
+
+                    for (const file of this.files) {
+                        const result = await this.convertToWebP(file);
+                        if (result) {
+                            this.convertedFiles.push(result);
+                        }
+                    }
+
+                    this.converting = false;
+                },
+
+                async convertToWebP(file, resolutionMultiplier = this.resolutionMultiplier, quality = this.quality) {
+                    const multiplier = parseFloat(resolutionMultiplier);
+                    if (isNaN(multiplier) || multiplier < 1) {
+                        alert('Resolution multiplier must be 1 or higher.');
+                        return null;
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+
+                    return new Promise((resolve) => {
+                        img.onload = () => {
+                            canvas.width = img.width * multiplier;
+                            canvas.height = img.height * multiplier;
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                            canvas.toBlob((blob) => {
+                                const webpUrl = URL.createObjectURL(blob);
+                                resolve({
+                                    name: file.name,
+                                    originalSize: file.size,
+                                    convertedSize: blob.size,
+                                    svgUrl: URL.createObjectURL(file),
+                                    webpUrl: webpUrl,
+                                    selected: this.selectAll,
+                                    resolutionMultiplier: this.resolutionMultiplier,
+                                    quality: this.quality
+                                });
+                            }, 'image/webp', quality / 100);
+                        };
+
+                        img.src = URL.createObjectURL(file);
+                    });
+                },
+
+                formatFileSize(bytes) {
+                    if (bytes === 0) return '0 Bytes';
+                    const k = 1024;
+                    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                },
+
+                toggleSelectAll() {
+                    this.convertedFiles.forEach(file => file.selected = this.selectAll);
+                },
+
+                downloadSelected() {
+                    const selectedFiles = this.convertedFiles.filter(file => file.selected);
+                    if (selectedFiles.length === 0) {
+                        alert('Please select at least one file to download.');
+                        return;
+                    }
+                    this.downloadFiles(selectedFiles);
+                },
+
+                downloadAll() {
+                    this.downloadFiles(this.convertedFiles);
+                },
+
+                async downloadFiles(files) {
+                    if (files.length === 1) {
+                        const link = document.createElement('a');
+                        link.href = files[0].webpUrl;
+                        link.download = files[0].name.replace('.svg', '.webp');
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    } else {
+                        const zip = new JSZip();
+                        for (const file of files) {
+                            const response = await fetch(file.webpUrl);
+                            const blob = await response.blob();
+                            zip.file(file.name.replace('.svg', '.webp'), blob);
+                        }
+                        const content = await zip.generateAsync({type: "blob"});
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(content);
+                        link.download = "converted_images.zip";
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+                },
+
+                openModal(svgUrl, webpUrl, fileName, originalSize, convertedSize, index) {
+                    this.modalSvgUrl = svgUrl;
+                    this.modalWebpUrl = webpUrl;
+                    this.modalFileName = fileName;
+                    this.modalOriginalSize = originalSize;
+                    this.modalConvertedSize = convertedSize;
+                    this.modalIndex = index;
+                    this.modalResolutionMultiplier = this.resolutionMultiplier;
+                    this.modalQuality = 100;
+                    this.showModal = true;
+                },
+
+                closeModal() {
+                    this.showModal = false;
+                },
+
+                async refreshModalImage() {
+                    const file = this.files[this.modalIndex];
+                    const result = await this.convertToWebP(file, this.modalResolutionMultiplier, this.modalQuality);
+                    if (result) {
+                        this.modalWebpUrl = result.webpUrl;
+                        this.modalConvertedSize = result.convertedSize;
+                        this.saveModalImage();
+                    }
+                },
+
+                saveModalImage() {
+                    this.convertedFiles[this.modalIndex].webpUrl = this.modalWebpUrl;
+                    this.convertedFiles[this.modalIndex].convertedSize = this.modalConvertedSize;
+                    this.closeModal();
+                },
+
+                async refreshImage(index) {
+                    const file = this.files[index];
+                    const result = await this.convertToWebP(
+                        file, 
+                        this.convertedFiles[index].resolutionMultiplier, 
+                        this.convertedFiles[index].quality
+                    );
+                    if (result) {
+                        this.convertedFiles[index].webpUrl = result.webpUrl;
+                        this.convertedFiles[index].convertedSize = result.convertedSize;
+                    }
+                },
+
+                clearAllImages() {
+                    this.files = [];
+                    this.convertedFiles = [];
+                },
+
+                handleAdditionalFiles(event) {
+                    const newFiles = Array.from(event.target.files).filter(file => file.type === 'image/svg+xml');
+                    this.files = [...this.files, ...newFiles];
+                    this.convertAllToWebP();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
+
